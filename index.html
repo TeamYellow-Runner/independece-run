@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Team Yellow - Independence Run</title>
     <style>
-        /* ABSOLUTE BROWSER-RIEGEL: Verhindert Scrollen und Wischen */
+        /* ABSOLUTE BROWSER-RIEGEL */
         * {
             box-sizing: border-box;
             -webkit-tap-highlight-color: transparent;
@@ -18,7 +18,7 @@
             margin: 0; padding: 0;
             width: 100vw; height: 100vh;
             overflow: hidden !important;
-            position: fixed; /* Fixiert die Seite auf PC & Handy */
+            position: fixed;
             background-color: #000;
             display: flex; justify-content: center; align-items: center;
         }
@@ -26,12 +26,11 @@
         #game-container {
             position: relative;
             width: 100vw;
-            height: 177.78vw; /* Exakt 9:16 Format */
+            height: 177.78vw;
             max-width: 56.25vh;
             max-height: 100vh;
             background: #111;
             overflow: hidden;
-            box-shadow: 0 0 60px rgba(0,0,0,1);
         }
 
         canvas {
@@ -94,22 +93,45 @@ function initLoad() {
         };
         images[key].src = assets[key];
     }
-    audio.main = new Audio('music_main_loop.mp3'); audio.main.loop = true;
-    audio.win = new Audio('music_victory.mp3'); audio.lose = new Audio('music_gameover.mp3');
+    
+    // Audio mit Fehler-Überprüfung
+    audio.main = new Audio('music_main_loop.mp3');
+    audio.main.loop = true;
+    audio.win = new Audio('music_victory.mp3');
+    audio.lose = new Audio('music_gameover.mp3');
+
+    // Teste ob Audio-Files geladen werden können
+    audio.main.onerror = () => console.error("Audio-Datei fehlt: music_main_loop.mp3");
 }
 initLoad();
 
 let obstacles = [], projectiles = [], bossProjectiles = [];
 let audioUnlocked = false;
 
-// --- INPUT & AUDIO UNLOCK ---
-function handleInteraction(e) {
-    if(e.cancelable) e.preventDefault(); // Stoppt Browser-Scrollen
+// --- DIESE FUNKTION IST DER SCHLÜSSEL FÜR DEN SOUND ---
+function unlockAudio() {
+    if (audioUnlocked) return;
+    
+    // Wir spielen kurz alle Sounds an und pausieren sie sofort
+    // Das "weckt" das Audio-System im Browser auf
+    const silentPlay = (a) => {
+        a.play().then(() => {
+            if (gameState === 'START') a.pause(); 
+        }).catch(e => console.log("Unlock failed, waiting for next click..."));
+    };
 
-    if (!audioUnlocked) {
-        audio.main.play().then(() => { audio.main.pause(); audio.main.currentTime = 0; }).catch(()=>{});
-        audioUnlocked = true;
-    }
+    silentPlay(audio.main);
+    silentPlay(audio.win);
+    silentPlay(audio.lose);
+    
+    audioUnlocked = true;
+}
+
+function handleInteraction(e) {
+    if(e.cancelable) e.preventDefault();
+    
+    // 1. Audio-System entsperren
+    unlockAudio();
 
     const rect = canvas.getBoundingClientRect();
     const cX = (e.touches ? e.touches[0].clientX : e.clientX);
@@ -126,9 +148,7 @@ function handleInteraction(e) {
         if (x < 360) playerLane = 0; else if (x > 720) playerLane = 2; else playerLane = 1;
         if (gameState === 'BOSS') projectiles.push({lane: playerLane, y: 1500});
     } else if (gameState === 'GAMEOVER' || gameState === 'VICTORY') {
-        if (y > 1150 && y < 1350 && gameState === 'VICTORY') shareGame();
-        else if (y >= 1350 && y < 1620) location.reload();
-        else if (y >= 1620) window.open(channelLink, '_blank');
+        location.reload(); 
     }
 }
 
@@ -139,28 +159,26 @@ function startGame() {
     gameState = 'PLAYING';
     score = 0; currentLevel = 1; playerHP = 3; bossHP = 10;
     obstacles = []; projectiles = []; bossProjectiles = [];
-    audio.main.play().catch(() => {});
-}
-
-function shareGame() {
-    const text = `🚀 Independence Run: Boss besiegt! 🏆 Spiel mit: ${window.location.href}`;
-    window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+    
+    // Musik starten
+    audio.main.currentTime = 0;
+    audio.main.play().catch(e => {
+        // Falls es immer noch blockiert ist, probieren wir es in 1 Sekunde nochmal
+        setTimeout(() => audio.main.play(), 1000);
+    });
 }
 
 function update() {
     if (gameState === 'PLAYING' || gameState === 'BOSS') {
         frameCount++;
-
         if (gameState === 'PLAYING' && frameCount % 65 === 0) {
             let type = (Math.random() > 0.4) ? 'gate' : 'agent';
             obstacles.push({type: type, lane: Math.floor(Math.random()*3), y: -300});
         }
-
         if (gameState === 'BOSS') {
             if (frameCount % 80 === 0) bossLane = Math.floor(Math.random()*3);
             if (frameCount % 60 === 0) bossProjectiles.push({lane: bossLane, y: 400});
         }
-
         obstacles.forEach((o, i) => {
             o.y += gameSpeed;
             if (o.y > 1400 && o.y < 1700 && o.lane === playerLane) {
@@ -169,25 +187,30 @@ function update() {
             }
             if (o.y > 2000) obstacles.splice(i, 1);
         });
-
         bossProjectiles.forEach((bp, i) => {
             bp.y += gameSpeed + 6;
             if (bp.y > 1400 && bp.y < 1700 && bp.lane === playerLane) {
                 playerHP--; bossProjectiles.splice(i, 1);
-                if(playerHP <= 0) { gameState = 'GAMEOVER'; audio.main.pause(); audio.lose.play(); }
+                if(playerHP <= 0) { 
+                    gameState = 'GAMEOVER'; 
+                    audio.main.pause(); 
+                    audio.lose.play(); 
+                }
             }
             if (bp.y > 2000) bossProjectiles.splice(i, 1);
         });
-
         projectiles.forEach((p, i) => {
             p.y -= 45;
             if (gameState === 'BOSS' && p.y < 500 && p.lane === bossLane) {
                 bossHP--; projectiles.splice(i, 1);
-                if (bossHP <= 0) { gameState = 'VICTORY'; audio.main.pause(); audio.win.play(); }
+                if (bossHP <= 0) { 
+                    gameState = 'VICTORY'; 
+                    audio.main.pause(); 
+                    audio.win.play(); 
+                }
             }
             if (p.y < -100) projectiles.splice(i, 1);
         });
-
         if (gameState === 'PLAYING') {
             if (score >= 300 && currentLevel === 1) currentLevel = 2;
             else if (score >= 700 && currentLevel === 2) currentLevel = 3;
@@ -198,37 +221,29 @@ function update() {
 
 function draw() {
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-
     if (gameState === 'START') {
         if(images.sc_start.complete) ctx.drawImage(images.sc_start, 0, 0, 1080, 1920);
     } else if (gameState === 'PLAYING' || gameState === 'BOSS') {
-        // HINTERGRUND STARR ZEICHNEN (Kein Laufband!)
         let bg = (gameState === 'BOSS') ? images.bg4 : images['bg' + currentLevel];
         if(bg && bg.complete) ctx.drawImage(bg, 0, 0, 1080, 1920);
-
         if (gameState === 'BOSS' && images.boss.complete) {
             ctx.drawImage(images.boss, 360 * bossLane + 20, 180, 400, 400);
             ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.fillRect(340, 130, 400, 25);
             ctx.fillStyle = "red"; ctx.fillRect(340, 130, 40 * bossHP, 25);
         }
-
         if(images.fx_shadow.complete) ctx.drawImage(images.fx_shadow, 360 * playerLane + 80, 1650, 200, 100);
         let char = images['runner_' + selectedGender];
         if(char && char.complete) ctx.drawImage(char, 360 * playerLane + 40, 1380, 280, 340);
-
         obstacles.forEach(o => {
             let img = (o.type === 'gate') ? images.gate : images.agent;
             if(img.complete) ctx.drawImage(img, 360 * o.lane + 55, o.y, 250, 250);
         });
-
         bossProjectiles.forEach(bp => {
             if(images.proj_syn.complete) ctx.drawImage(images.proj_syn, 360 * bp.lane + 80, bp.y, 200, 200);
         });
-
         projectiles.forEach(p => {
             if(images.proj_ty.complete) ctx.drawImage(images.proj_ty, 360 * p.lane + 130, p.y, 100, 200);
         });
-
         let ui = (gameState === 'BOSS') ? images.ui_hp : images.ui_score;
         if(ui.complete) {
             ctx.drawImage(ui, 50, 50, 400, 150);
