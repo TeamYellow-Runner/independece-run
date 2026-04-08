@@ -5,7 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Team Yellow - Independence Run</title>
     <style>
-        /* ABSOLUTE BROWSER-SPERRE */
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; touch-action: none; user-select: none; -webkit-user-select: none; }
         html, body { margin: 0; padding: 0; width: 100vw; height: 100vh; overflow: hidden !important; position: fixed; background-color: #000; display: flex; justify-content: center; align-items: center; }
         #game-container { position: relative; width: 100vw; height: 177.78vw; max-width: 56.25vh; max-height: 100vh; background: #111; overflow: hidden; box-shadow: 0 0 60px rgba(0,0,0,1); }
@@ -29,7 +28,6 @@ const levelGoals = [150, 400, 800];
 const levelTimes = [45, 60, 75];    
 const channelLink = "https://whatsapp.com/channel/0029Vakref7E50Uf6qbO6545";
 
-// Angepasste Geschwindigkeit für Swipe-Eingabe (etwas langsamer als vorher)
 let baseSpeed = 13; 
 let gameSpeed = baseSpeed;
 
@@ -70,9 +68,8 @@ initLoad();
 
 let obstacles = [], projectiles = [], bossProjectiles = [], audioUnlocked = false;
 
-// --- GESTEN-LOGIK (SWIPE) ---
 let touchStartX = 0, touchStartY = 0;
-const swipeThreshold = 50; // Mindeststrecke für Swipe-Erkennung
+const swipeThreshold = 50;
 
 function handleStart(e) {
     const c = e.touches ? e.touches[0] : e;
@@ -84,49 +81,43 @@ function handleEnd(e) {
     if(e.cancelable) e.preventDefault();
     const c = e.changedTouches ? e.changedTouches[0] : e;
     const diffX = c.clientX - touchStartX;
-    const diffY = c.clientY - touchStartY;
-    
-    // Audio Unlocker
-    if (!audioUnlocked) { 
-        audio.main.play().then(() => { audio.main.pause(); audio.main.currentTime = 0; }).catch(()=>{}); 
-        audioUnlocked = true; 
-    }
-
     const rect = canvas.getBoundingClientRect();
     const x = (c.clientX - rect.left) * (canvas.width / rect.width);
     const y = (c.clientY - rect.top) * (canvas.height / rect.height);
 
     // --- LOGIK: START-SCREEN ---
     if (gameState === 'START') {
-        if (y < 1550) { selectedGender = (x < 540) ? 'm' : 'f'; startGame(); }
+        if (y < 1550) { 
+            selectedGender = (x < 540) ? 'm' : 'f'; 
+            // Musik direkt hier starten (unmittelbar nach Interaktion)
+            audio.main.play().then(() => {
+                audioUnlocked = true;
+                startGame(); 
+            }).catch(() => {
+                // Fallback falls Play-Promise klemmt
+                startGame(); 
+            });
+        }
         else { window.open(channelLink, '_blank'); }
     } 
-    // --- LOGIK: SWIPEN WÄHREND DES LAUFS ---
     else if (gameState === 'PLAYING' || gameState === 'BOSS') {
         if (Math.abs(diffX) > swipeThreshold) {
-            if (diffX > 0 && playerLane < 2) playerLane++; // Swipe Rechts
-            else if (diffX < 0 && playerLane > 0) playerLane--; // Swipe Links
+            if (diffX > 0 && playerLane < 2) playerLane++; 
+            else if (diffX < 0 && playerLane > 0) playerLane--; 
         } else if (gameState === 'BOSS') {
-            // Im Bosskampf löst ein kurzer Tap ein Projektil aus
             projectiles.push({lane: playerLane, y: 1500});
         }
     } 
-    // --- LOGIK: CLEAN BILD -> MENU BILD ---
-    else if (gameState === 'VICTORY_CLEAN') {
-        gameState = 'VICTORY_MENU'; // Musik läuft einfach weiter
-    } 
-    else if (gameState === 'GAMEOVER_CLEAN') {
-        gameState = 'GAMEOVER_MENU'; // Musik läuft einfach weiter
-    }
-    // --- LOGIK: MENU BUTTONS ---
+    else if (gameState === 'VICTORY_CLEAN') { gameState = 'VICTORY_MENU'; } 
+    else if (gameState === 'GAMEOVER_CLEAN') { gameState = 'GAMEOVER_MENU'; }
     else if (gameState === 'VICTORY_MENU') {
-        if (y < 640) location.reload(); // Oben: Nochmal spielen
-        else if (y < 1280) window.open(channelLink, '_blank'); // Mitte: Kanal
-        else shareGame(); // Unten: Teilen
+        if (y < 640) location.reload(); 
+        else if (y < 1280) window.open(channelLink, '_blank'); 
+        else shareGame(); 
     } 
     else if (gameState === 'GAMEOVER_MENU') {
-        if (y < 960) location.reload(); // Oben: Nochmal spielen
-        else window.open(channelLink, '_blank'); // Unten: Kanal
+        if (y < 960) location.reload(); 
+        else window.open(channelLink, '_blank'); 
     }
 }
 
@@ -140,7 +131,8 @@ function startGame() {
     obstacles = []; projectiles = []; bossProjectiles = [];
     gameSpeed = baseSpeed;
     timeLeft = levelTimes[0];
-    audio.main.play().catch(() => {});
+    // Erneuter Play-Check zur Sicherheit
+    if (audio.main.paused) audio.main.play().catch(()=>{});
 }
 
 function shareGame() {
@@ -154,10 +146,7 @@ function update() {
         frameCount++;
         if (gameState === 'PLAYING') {
             timeLeft -= 1/60; 
-            if (timeLeft <= 0) { 
-                gameState = 'GAMEOVER_CLEAN'; 
-                audio.main.pause(); audio.lose.play(); 
-            }
+            if (timeLeft <= 0) { gameState = 'GAMEOVER_CLEAN'; audio.main.pause(); audio.lose.play(); }
         }
         if (gameState === 'PLAYING' && frameCount % 70 === 0) {
             let type = (Math.random() > 0.4) ? 'gate' : 'agent';
@@ -176,7 +165,7 @@ function update() {
             if (o.y > 2000) obstacles.splice(i, 1);
         });
         bossProjectiles.forEach((bp, i) => {
-            bp.y += gameSpeed + 5; // Boss Projektile etwas langsamer für Swipe
+            bp.y += gameSpeed + 5; 
             if (bp.y > 1400 && bp.y < 1700 && bp.lane === playerLane) {
                 playerHP--; bossProjectiles.splice(i, 1);
                 if(playerHP <= 0) { gameState = 'GAMEOVER_CLEAN'; audio.main.pause(); audio.lose.play(); }
@@ -234,7 +223,6 @@ function draw() {
             }
         }
     } 
-    // --- RENDERING ENDBILDER ---
     else if (gameState === 'VICTORY_CLEAN') ctx.drawImage(images.sc_victory_clean, 0, 0, 1080, 1920);
     else if (gameState === 'VICTORY_MENU') ctx.drawImage(images.sc_victory_menu, 0, 0, 1080, 1920);
     else if (gameState === 'GAMEOVER_CLEAN') ctx.drawImage(images.sc_gameover_clean, 0, 0, 1080, 1920);
