@@ -3,9 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    
+    <meta property="og:title" content="Team Yellow: Independence Run">
+    <meta property="og:description" content="Sammle Kollegen, weiche Agenten aus und vertreibe Gegenargumente mit der Kraft der Solidarität! Jetzt spielen.">
+    <meta property="og:image" content="https://teamyellow-runner.github.io/independence-run/preview_thumb.png">
+    <meta property="og:url" content="https://teamyellow-runner.github.io/independence-run">
+    <meta property="og:type" content="website">
+
     <title>Team Yellow - Independence Run</title>
     <style>
-        /* BROWSER-OPTIMIERUNG */
+        /* BROWSER-OPTIMIERUNG & LOCK */
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; touch-action: none; user-select: none; -webkit-user-select: none; }
         html, body { margin: 0; padding: 0; width: 100vw; height: 100vh; overflow: hidden !important; position: fixed; background-color: #000; display: flex; justify-content: center; align-items: center; }
         #game-container { position: relative; width: 100vw; height: 177.78vw; max-width: 56.25vh; max-height: 100vh; background: #111; overflow: hidden; box-shadow: 0 0 60px rgba(0,0,0,1); }
@@ -214,24 +221,22 @@ function draw() {
         bossProjectiles.forEach(bp => ctx.drawImage(images.proj_syn, 360 * bp.lane + 80, bp.y, 200, 200));
         projectiles.forEach(p => ctx.drawImage(images.proj_ty, 360 * p.lane + 130, p.y, 100, 200));
 
-        // --- UI ELEMENTE (SCORE / HP) ---
         let ui = (gameState === 'BOSS' || gameState === 'BOSS_ALERT') ? images.ui_hp : images.ui_score;
         ctx.drawImage(ui, 50, 50, 400, 150);
         ctx.fillStyle = "black"; ctx.font = "bold 70px Arial"; ctx.textAlign = "center";
         ctx.fillText((gameState === 'BOSS' || gameState === 'BOSS_ALERT' ? playerHP : score), 285, 148);
 
-        // --- ZEITANZEIGE (RECHTS OBEN) ---
+        // --- ZEITANZEIGE KORREKTUR ---
         if (gameState === 'PLAYING') {
-            ctx.textAlign = "right"; // Explizit auf rechtsbündig setzen
+            ctx.textAlign = "right";
             ctx.font = "bold 65px Arial";
-            // Kleiner Schatten für bessere Lesbarkeit
             ctx.shadowColor = "rgba(0,0,0,0.5)"; ctx.shadowBlur = 10;
             ctx.fillStyle = timeLeft < 10 ? "#FF4444" : "white";
             ctx.fillText("ZEIT: " + Math.ceil(timeLeft) + "s", 1000, 145);
-            ctx.shadowBlur = 0; // Schatten für den Rest wieder ausschalten
+            ctx.shadowBlur = 0; 
         }
 
-        // --- BOSS ALERT OVERLAY ---
+        // --- BOSS ALERT OVERLAY KORREKTUR ---
         if (gameState === 'BOSS_ALERT') {
             ctx.fillStyle = "rgba(0,0,0,0.92)";
             ctx.fillRect(0, 0, 1080, 1920);
