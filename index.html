@@ -7,12 +7,11 @@
     <meta property="og:title" content="Team Yellow: Independence Run">
     <meta property="og:description" content="Sammle Kollegen, weiche Agenten aus und vertreibe Gegenargumente mit der Kraft der Solidarität! Jetzt spielen.">
     <meta property="og:image" content="https://teamyellow-runner.github.io/independence-run/preview_thumb.png">
-    <meta property="og:url" content="https://teamyellow-runner.github.io/independence-run">
+    <meta property="og:url" content="https://teamyellow-runner.github.io/independence-run/">
     <meta property="og:type" content="website">
 
     <title>Team Yellow - Independence Run</title>
     <style>
-        /* BROWSER-OPTIMIERUNG & LOCK */
         * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; touch-action: none; user-select: none; -webkit-user-select: none; }
         html, body { margin: 0; padding: 0; width: 100vw; height: 100vh; overflow: hidden !important; position: fixed; background-color: #000; display: flex; justify-content: center; align-items: center; }
         #game-container { position: relative; width: 100vw; height: 177.78vw; max-width: 56.25vh; max-height: 100vh; background: #111; overflow: hidden; box-shadow: 0 0 60px rgba(0,0,0,1); }
@@ -31,19 +30,25 @@ const canvas = document.getElementById('gameCanvas');
 const ctx = canvas.getContext('2d');
 canvas.width = 1080; canvas.height = 1920;
 
+// --- PERSPEKTIV-KONSTANTEN ---
+const HORIZON_Y = 880;     // Punkt, an dem Objekte erscheinen (Skyline-Horizont)
+const SPAWN_Y = 850;       // Startpunkt für die Berechnung
+const PLAYER_Y = 1600;     // Die Ebene, auf der der Spieler steht
+const LANE_SPREAD = 500;   // Wie weit die Spuren unten auseinandergehen
+
 // --- GLOBALE VARIABLEN ---
 let gameState = 'LOADING'; 
 let difficulty = 'PROFI';
 let score = 0, playerHP = 3, bossHP = 10;
 let currentLevel = 1, playerLane = 1, bossLane = 1, selectedGender = 'm';
-let frameCount = 0, timeLeft = 0, gameSpeed = 13;
+let frameCount = 0, timeLeft = 0, gameSpeedFactor = 0.007; // Basis-Geschwindigkeit für Pseudo-3D
 let visualX = 540; 
 
 const channelLink = "https://whatsapp.com/channel/0029Vakref7E50Uf6qbO6545";
 
 const config = {
-    ENTSPANNT: { baseSpeed: 10, hp: 5, goals: [100, 250, 500], times: [60, 75, 90], bossHP: 3, agentDensity: 90 },
-    PROFI: { baseSpeed: 13, hp: 3, goals: [150, 400, 800], times: [45, 60, 75], bossHP: 10, agentDensity: 70 }
+    ENTSPANNT: { speedMod: 0.005, hp: 5, goals: [100, 250, 500], times: [60, 75, 90], bossHP: 3, agentDensity: 100 },
+    PROFI: { speedMod: 0.008, hp: 3, goals: [150, 400, 800], times: [45, 60, 75], bossHP: 10, agentDensity: 75 }
 };
 
 const images = {}, audio = {};
@@ -132,7 +137,7 @@ function startRun() {
     gameState = 'PLAYING';
     score = 0; currentLevel = 1; 
     playerHP = c.hp; bossHP = c.bossHP;
-    gameSpeed = c.baseSpeed;
+    gameSpeedFactor = c.speedMod;
     timeLeft = c.times[0];
     obstacles = []; projectiles = []; bossProjectiles = [];
     if(audio.main.paused) audio.main.play();
@@ -147,45 +152,52 @@ function update() {
     if (gameState === 'PLAYING' || gameState === 'BOSS') {
         frameCount++;
         const c = config[difficulty];
-        let targetX = 360 * playerLane + 180;
+        
+        // Sanftes Gleiten des Spielers
+        let targetX = 540 + (playerLane - 1) * LANE_SPREAD;
         visualX += (targetX - visualX) * 0.2; 
 
         if (gameState === 'PLAYING') {
             timeLeft -= 1/60;
             if (timeLeft <= 0) { gameState = 'GAMEOVER_CLEAN'; audio.main.pause(); audio.lose.play(); }
+            
             if (frameCount % c.agentDensity === 0) {
                 let type = (Math.random() > 0.4) ? 'gate' : 'agent';
-                obstacles.push({type, lane: Math.floor(Math.random()*3), y: -300});
+                obstacles.push({type, lane: Math.floor(Math.random()*3), progress: 0});
             }
             if (score >= c.goals[currentLevel-1]) {
-                if (currentLevel < 3) { currentLevel++; timeLeft = c.times[currentLevel-1]; gameSpeed += 1.5; }
+                if (currentLevel < 3) { currentLevel++; timeLeft = c.times[currentLevel-1]; gameSpeedFactor += 0.001; }
                 else { gameState = 'BOSS_ALERT'; obstacles = []; }
             }
         }
 
         if (gameState === 'BOSS') {
             if (frameCount % 85 === 0) bossLane = Math.floor(Math.random()*3);
-            if (frameCount % 70 === 0) bossProjectiles.push({lane: bossLane, y: 400});
+            if (frameCount % 70 === 0) bossProjectiles.push({lane: bossLane, progress: 0});
         }
 
+        // UPDATE OBSTACLES (Perspektivisch)
         obstacles.forEach((o, i) => {
-            o.y += gameSpeed;
-            if (o.y > 1400 && o.y < 1700 && o.lane === playerLane) {
+            o.progress += gameSpeedFactor;
+            // Kollisions-Check im Fenster von 85% bis 95% Fortschritt
+            if (o.progress > 0.85 && o.progress < 0.95 && o.lane === playerLane) {
                 if (o.type === 'gate') { score += 20; obstacles.splice(i, 1); }
                 else { score = Math.max(0, score - 25); obstacles.splice(i, 1); }
             }
-            if (o.y > 2000) obstacles.splice(i, 1);
+            if (o.progress >= 1.1) obstacles.splice(i, 1);
         });
 
+        // UPDATE BOSS PROJECTILES (Perspektivisch)
         bossProjectiles.forEach((bp, i) => {
-            bp.y += gameSpeed + 5;
-            if (bp.y > 1400 && bp.y < 1700 && bp.lane === playerLane) {
+            bp.progress += gameSpeedFactor + 0.005;
+            if (bp.progress > 0.85 && bp.progress < 0.95 && bp.lane === playerLane) {
                 playerHP--; bossProjectiles.splice(i, 1);
                 if(playerHP <= 0) { gameState = 'GAMEOVER_CLEAN'; audio.main.pause(); audio.lose.play(); }
             }
-            if (bp.y > 2000) bossProjectiles.splice(i, 1);
+            if (bp.progress >= 1.1) bossProjectiles.splice(i, 1);
         });
 
+        // Eigene Projektile (Lineare Bewegung nach oben)
         projectiles.forEach((p, i) => {
             p.y -= 45;
             if (gameState === 'BOSS' && p.y < 500 && p.lane === bossLane) {
@@ -207,36 +219,51 @@ function draw() {
         ctx.drawImage(bg, 0, 0, 1080, 1920);
         
         if (gameState === 'BOSS') {
-            ctx.drawImage(images.boss, 360 * bossLane + 20, 180, 400, 400);
+            ctx.drawImage(images.boss, 540 + (bossLane - 1) * 360 - 200, 180, 400, 400);
             ctx.fillStyle = "rgba(0,0,0,0.6)"; ctx.fillRect(340, 130, 400, 25);
             ctx.fillStyle = "#FFD700"; ctx.fillRect(340, 130, (400 / config[difficulty].bossHP) * bossHP, 25);
         }
 
+        // --- DRAW OBSTACLES (Pseudo-3D) ---
+        obstacles.forEach(o => {
+            let size = 300 * o.progress;
+            let drawX = 540 + (o.lane - 1) * LANE_SPREAD * o.progress;
+            let drawY = HORIZON_Y + (PLAYER_Y - HORIZON_Y) * o.progress;
+            ctx.drawImage(o.type === 'gate' ? images.gate : images.agent, drawX - size/2, drawY - size/2, size, size);
+        });
+
+        // --- DRAW BOSS PROJECTILES (Pseudo-3D) ---
+        bossProjectiles.forEach(bp => {
+            let size = 250 * bp.progress;
+            let drawX = 540 + (bp.lane - 1) * LANE_SPREAD * bp.progress;
+            let drawY = 400 + (PLAYER_Y - 400) * bp.progress;
+            ctx.drawImage(images.proj_syn, drawX - size/2, drawY - size/2, size, size);
+        });
+
+        // Eigene Projektile
+        projectiles.forEach(p => {
+            ctx.drawImage(images.proj_ty, 540 + (p.lane - 1) * LANE_SPREAD - 50, p.y, 100, 200);
+        });
+
+        // Schatten & Runner
         ctx.drawImage(images.fx_shadow, visualX - 100, 1650, 200, 100);
         ctx.drawImage(images['runner_' + selectedGender], visualX - 140, 1380, 280, 340);
 
-        if (gameState === 'PLAYING') {
-            obstacles.forEach(o => ctx.drawImage(o.type === 'gate' ? images.gate : images.agent, 360 * o.lane + 55, o.y, 250, 250));
-        }
-        bossProjectiles.forEach(bp => ctx.drawImage(images.proj_syn, 360 * bp.lane + 80, bp.y, 200, 200));
-        projectiles.forEach(p => ctx.drawImage(images.proj_ty, 360 * p.lane + 130, p.y, 100, 200));
-
+        // UI
         let ui = (gameState === 'BOSS' || gameState === 'BOSS_ALERT') ? images.ui_hp : images.ui_score;
         ctx.drawImage(ui, 50, 50, 400, 150);
         ctx.fillStyle = "black"; ctx.font = "bold 70px Arial"; ctx.textAlign = "center";
         ctx.fillText((gameState === 'BOSS' || gameState === 'BOSS_ALERT' ? playerHP : score), 285, 148);
 
-        // --- ZEITANZEIGE KORREKTUR ---
         if (gameState === 'PLAYING') {
-            ctx.textAlign = "right";
-            ctx.font = "bold 65px Arial";
+            ctx.textAlign = "right"; ctx.font = "bold 65px Arial";
             ctx.shadowColor = "rgba(0,0,0,0.5)"; ctx.shadowBlur = 10;
             ctx.fillStyle = timeLeft < 10 ? "#FF4444" : "white";
             ctx.fillText("ZEIT: " + Math.ceil(timeLeft) + "s", 1000, 145);
             ctx.shadowBlur = 0; 
         }
 
-        // --- BOSS ALERT OVERLAY KORREKTUR ---
+        // BOSS ALERT OVERLAY
         if (gameState === 'BOSS_ALERT') {
             ctx.fillStyle = "rgba(0,0,0,0.92)";
             ctx.fillRect(0, 0, 1080, 1920);
